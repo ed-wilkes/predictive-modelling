@@ -142,6 +142,7 @@ performMultiNestedCV <- function(data
   list_results <- list()
   list_pred_total <- list()
   list_pred_avg <- list()
+  list_features <- list()
   
   ## Outer CV repeat loop ----
   for (rep in 1:outer_rep) {
@@ -206,13 +207,14 @@ performMultiNestedCV <- function(data
                          ,y)
         
         df_train <- df_train[, which(colnames(df_train) %in% vars_boruta)]
+        list_features[[fold_name]] <- vars_boruta
         
       }
       
       # Set seed again to ensure reproducible inner loop fold selection
       set.seed(seed)
       
-      # Generate lists to store predict() results for each method
+      # Generate lists to store predidct() results for each method
       list_pred_methods <- list() 
       for (method in methods) {
         list_pred_methods[[method]] <- data.frame(row_num = test_rows
@@ -337,7 +339,9 @@ performMultiNestedCV <- function(data
               ,inner_CV = paste0(inner_k, " X ", inner_rep)
               ,random_seed = seed
               ,predictions = list_pred_total
-              ,avg_predictions = list_pred_avg)
+              ,avg_predictions = list_pred_avg
+              ,feature_selection = feat_select
+              ,features = list_features)
   )
   
 }
