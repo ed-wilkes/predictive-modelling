@@ -1,5 +1,5 @@
 #' @name performedNestedCV
-#' @author Ed
+#' @author Ed Wilkes
 #' 
 #' @description performs nested CV, using the inner loop to select the optimal hyper
 #' -parameters, and the outer loop to test the optimal model on a test set. 
@@ -49,23 +49,23 @@ performNestedCV <- function(data
   require(dplyr)
   require(caret)
   
-  ## Check if "y" is in data -------------------------------------------------------------
+  ## Check if "y" is in data ----
   if(!y %in% colnames(data)) {
     stop(paste0("Your outcome variable, '", y, "', is not in the dataset"))
   }
   
-  ## Check if "y" is a factor ------------------------------------------------------------
+  ## Check if "y" is a factor ----
   if(!is.factor(data[[y]])) {
     message("Outcome variable is not a factor, coercing ...")
     data[[y]] <- factor(data[[y]])
   }
   
-  ## Check if "verbose" is boolean -------------------------------------------------------
+  ## Check if "verbose" is boolean ----
   if(!is.logical(verbose)) {
     stop("Argument 'verbose' must be logical.")
   }
   
-  ## Check levels in outcome vector ------------------------------------------------------
+  ## Check levels in outcome vector ----
   if(length(levels(data[[y]])) > 2) {
     message("Outcome vector has more than one level, assuming multiclass analysis ...")
     summary <- "multiClassSummary"
@@ -74,11 +74,11 @@ performNestedCV <- function(data
     summary <- "twoClassSummary"
   }
   
-  ## Create results lists ----------------------------------------------------------------
+  ## Create results lists ----
   list_results <- list()
   list_pred <- list()
   
-  ## Check that folds/reps have been defined, default if not -----------------------------
+  ## Check that folds/reps have been defined, default if not ----
   if(missing(outer_k)) {
     warning("No value given for 'outer_k', defaulting to 2.")
     outer_k <- 2
@@ -96,17 +96,17 @@ performNestedCV <- function(data
     inner_rep <- 5
   }
   
-  ## Warn if feature selection is requested ----------------------------------------------
+  ## Warn if feature selection is requested ----
   if(feat_select == TRUE) {
     message("Feature selection is enabled, this will substantially increase run time!")
   }
   
-  ## Check if sampling is correct string -------------------------------------------------
+  ## Check if sampling is correct string ----
   if(!sampling %in% c("none", "down", "smote", "rose")) {
     stop("'sampling' must be a string of value 'none', 'down', 'smote', or 'rose'.")
   }
   
-  ## Define inner CV control -------------------------------------------------------------
+  ## Define inner CV control ----
   if(sampling == "none") {
     
     inner_control <- caret::trainControl(method = "repeatedcv"
@@ -137,7 +137,7 @@ performNestedCV <- function(data
     list_features <- list()
   }
   
-  ## Outer CV repeat loop ----------------------------------------------------------------
+  ## Outer CV repeat loop ----
   for(rep in 1:outer_rep) {
     
     # Initialise results data frame
@@ -164,7 +164,7 @@ performNestedCV <- function(data
       
     }
     
-    # Outer CV loop (test set evaluation) ------------------------------------------------
+    # Outer CV loop (test set evaluation) ----
     for(k in 1:outer_k) {
       
       # Get row numbers of train data
