@@ -94,10 +94,6 @@ performNestedCVParallel <- function(data
     summary <- "prSummary"
   }
   
-  ## Create results lists ----
-  list_results <- list()
-  list_pred <- list()
-  
   ## Check that folds/reps have been defined, default if not ----
   if (missing(outer_k)) {
     warning("No value given for 'outer_k', defaulting to 2.")
