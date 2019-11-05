@@ -11,7 +11,8 @@
 #' 
 plotConfMatrix <- function(data
                            ,breaks = seq(0, 100, 5)
-                           ,colours = c("white", "red2")) {
+                           ,colours = c("white", "red2")
+                           ,order = NULL) {
 
   ## Required packages                                                        
   require(caret)
@@ -41,6 +42,10 @@ plotConfMatrix <- function(data
   conf_mat <- conf_mat[,-1]
   conf_mat <- as.matrix(conf_mat)
   conf_mat_ratio <- sweep(conf_mat, 1, rowSums(conf_mat), `/`)*100
+  if (!is.null(order)) {
+    conf_mat_ratio <- as.matrix(conf_mat_ratio[order, order])
+    conf_mat <- as.matrix(conf_mat[order, order])
+  }
   hm_breaks <- breaks
   hm_colours <- colorRampPalette(colours)(length(hm_breaks)-1) 
   hm_pred <- heatmap.2(conf_mat_ratio
@@ -53,5 +58,5 @@ plotConfMatrix <- function(data
                        ,cellnote = conf_mat
                        ,notecol = "black"
   )
-  
+  return(hm_pred)
 }
