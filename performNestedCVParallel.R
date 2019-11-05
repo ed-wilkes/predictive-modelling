@@ -52,11 +52,14 @@ performNestedCVParallel <- function(data
                                     ,target_class = NULL) {
   
   ## Required packages
+  require(Boruta)
   require(doParallel)
   require(doRNG)
   require(dplyr)
   require(caret)
   require(foreach)
+  require(MLmetrics)
+  require(pROC)
   
   ## Check if "y" is in data ----
   if (!y %in% colnames(data)) {
@@ -76,11 +79,19 @@ performNestedCVParallel <- function(data
   
   ## Check levels in outcome vector ----
   if(length(levels(data[[y]])) > 2) {
+    
     message("Outcome vector has more than one level, assuming multiclass analysis ...")
     summary <- "multiClassSummary"
-  } else {
+    
+  } else if (length(levels(data[[y]])) == 2 && metric != "AUC") {
+    
     message("Outcome vector has two levels, assuming two class analysis ...")
     summary <- "twoClassSummary"
+    
+  } else if (length(levels(data[[y]])) == 2 && metric == "AUC") {
+    
+    message("Outcome vector has two levels, assuming two class analysis ...")
+    summary <- "prSummary"
   }
   
   ## Create results lists ----
@@ -116,7 +127,8 @@ performNestedCVParallel <- function(data
   }
   
   ## Check if target_class has been defined ----
-  if (target_class == NULL && levels(data[[y]]) == 2) {
+  n_class <- length(unique(data[[y]]))
+  if (is.null(target_class) && n_class == 2) {
     stop("For two class comparisons, you must define a target (i.e., positive) class!")    
   }
 
@@ -221,10 +233,10 @@ performNestedCVParallel <- function(data
                                           ,trControl = inner_control)
               
               # Get predictions on test fold with final model from inner loop
-              if(summary == "twoClassSummary") {
+              if(summary == "twoClassSummary" || summary == "prSummary") {
                 
                 pred_prob <- predict(inner_model, df_test, type = "prob")
-                roc <- pROC::roc(df_test[[y]], pred_num[[target_class]])$auc
+                roc <- pROC::roc(df_test[[y]], pred_prob[[target_class]])$auc
                 pred_class <- predict(inner_model, df_test)
                 results <-  caret::confusionMatrix(pred_class
                                                    ,reference = df_test[[y]]
@@ -235,7 +247,15 @@ performNestedCVParallel <- function(data
                   as.numeric
                 df_results$outer_mean_sens <- results$byClass[1]
                 df_results$outer_mean_spec <- results$byClass[2]
+                df_results$outer_mean_ppv <- results$byClass[3]
+                df_results$outer_mean_npv <- results$byClass[4]
                 df_results$outer_mean_auroc <- roc
+                
+                if (metric == "AUC") {
+                  prauc <- MLmetrics::PRAUC(y_pred = pred_prob[[target_class]]
+                                            ,y_true = df_test[[y]])
+                  df_results[[paste0("outer_pr", metric)]] <- round(prauc, 4)
+                }
                 
                 df_pred_class <- data.frame(fold = i
                                             ,row_num = test_rows
