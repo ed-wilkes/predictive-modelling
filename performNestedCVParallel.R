@@ -60,6 +60,7 @@ performNestedCVParallel <- function(data
   require(foreach)
   require(MLmetrics)
   require(pROC)
+  require(stringr)
   
   ## Check if "y" is in data ----
   if (!y %in% colnames(data)) {
@@ -78,10 +79,31 @@ performNestedCVParallel <- function(data
   }
   
   ## Check levels in outcome vector ----
-  if(length(levels(data[[y]])) > 2) {
+  if(length(levels(data[[y]])) > 2 && !grepl("Mean_F", metric)) {
     
     message("Outcome vector has more than one level, assuming multiclass analysis ...")
     summary <- "multiClassSummary"
+    
+  } else if (length(levels(data[[y]])) > 2 && grepl("Mean_F", metric)) {
+    
+    message("Outcome vector has more than one level, assuming multiclass analysis ...")
+    beta <- stringr::str_sub(metric, nchar(metric))
+    if (as.numeric(beta) > 1) {
+      
+      func_name <- paste0("multiClassSummaryF", beta)
+      if (!beta %in% c("2", "4")) {
+        stop(paste0("Only F1, F2, or F4 scores are currently supported."))
+      } else if (is.null(get(func_name))) {
+        stop(paste0("This metric requires the summaryFunction '"
+                    ,func_name
+                    ,"in your global environment."))
+      } else {
+        summary <- func_name
+      }
+      
+    } else {
+      summary <- "multiClassSummary"
+    }
     
   } else if (length(levels(data[[y]])) == 2 && metric != "AUC") {
     
@@ -92,6 +114,7 @@ performNestedCVParallel <- function(data
     
     message("Outcome vector has two levels, assuming two class analysis ...")
     summary <- "prSummary"
+    
   }
   
   ## Check that folds/reps have been defined, default if not ----
@@ -138,7 +161,7 @@ performNestedCVParallel <- function(data
                                          ,classProbs = TRUE
                                          ,allowParallel = FALSE
                                          ,trim = TRUE
-                                         ,summaryFunction = match.fun(summary))
+                                         ,summaryFunction = get(summary))
     
   } else if (sampling %in% c("down", "smote", "rose")) {
     
@@ -150,20 +173,23 @@ performNestedCVParallel <- function(data
                                          ,sampling = sampling
                                          ,allowParallel = FALSE
                                          ,trim = TRUE
-                                         ,summaryFunction = match.fun(summary))
+                                         ,summaryFunction = get(summary))
     
   } else if (sampling == "custom") {
     
-    message("NB: This sampling scheme requires a caret sampling method called 'custom' in your global environment.")
-    inner_control <- caret::trainControl(method = "repeatedcv"
-                                        ,number = inner_k
-                                        ,repeats = inner_rep
-                                        ,verboseIter = verbose
-                                        ,classProbs = TRUE
-                                        ,sampling = get(sampling)
-                                        ,allowParallel = FALSE
-                                        ,trim = TRUE
-                                        ,summaryFunction = match.fun(summary))
+    if (is.null(get(sampling))) {
+      stop("This sampling scheme requires a caret sampling method called 'custom' in your global environment.")
+    } else {
+      inner_control <- caret::trainControl(method = "repeatedcv"
+                                           ,number = inner_k
+                                           ,repeats = inner_rep
+                                           ,verboseIter = verbose
+                                           ,classProbs = TRUE
+                                           ,sampling = get(sampling)
+                                           ,allowParallel = FALSE
+                                           ,trim = TRUE
+                                           ,summaryFunction = get(summary))
+    }
     
   }
   
@@ -171,7 +197,7 @@ performNestedCVParallel <- function(data
   set.seed(seed)
   list_folds <- caret::createMultiFolds(y = data[[y]], k = outer_k, times = outer_rep)
   
-  ## Set up clusters ----
+  ## Set up cluster ----
   cores_max <- detectCores()
   if (n_cores > cores_max) {
     stop("Number of cores detected is lower than n_cores!")
@@ -180,8 +206,13 @@ performNestedCVParallel <- function(data
   }
   cluster <- makeCluster(n_cores)
   registerDoParallel(cluster)
+  
+  ## Export necessary functions to cluster ----
   if (sampling == "custom") {
-   clusterExport(cluster, varlist = "custom", envir = .GlobalEnv)
+    clusterExport(cluster, varlist = "custom", envir = .GlobalEnv)
+  }
+  if (grepl("multiClassSummaryF", summary)) {
+    clusterExport(cluster, varlist = summary, envir = .GlobalEnv)
   }
   
   ## Outer CV repeat loop ----
@@ -229,7 +260,7 @@ performNestedCVParallel <- function(data
                                           ,trControl = inner_control)
               
               # Get predictions on test fold with final model from inner loop
-              if(summary == "twoClassSummary" || summary == "prSummary") {
+              if (summary %in% c("twoClassSummary", "prSummary")) {
                 
                 pred_prob <- predict(inner_model, df_test, type = "prob")
                 roc <- pROC::roc(df_test[[y]], pred_prob[[target_class]])$auc
@@ -263,7 +294,9 @@ performNestedCVParallel <- function(data
                                            ,pred = pred_prob[[target_class]]
                                            ,obs = df_test[[y]])
                 
-              } else if(summary == "multiClassSummary") {
+              } else if (summary %in% c("multiClassSummary"
+                                        ,"multiClassSummaryF2"
+                                        ,"multiClassSummaryF4")) {
                 
                 pred_class <- predict(inner_model, df_test)
                 pred_prob <- predict(inner_model, df_test, type = "prob")
@@ -276,15 +309,25 @@ performNestedCVParallel <- function(data
                   as.numeric
                 df_results$outer_mean_sens <- mean(results$byClass[,1])
                 df_results$outer_mean_spec <- mean(results$byClass[,2])
-                df_results$outer_mean_ppv <- mean(results$byClass[,3])
+                df_results$outer_mean_ppv <- mean(results$byClass[,3], na.rm = TRUE)
                 df_results$outer_mean_npv <- mean(results$byClass[,4])
-                df_results$outer_mean_f1 <- mean(results$byClass[,7])
+                df_results$outer_mean_f1 <- mean(results$byClass[,7], na.rm = TRUE)
                 df_results$outer_mean_balanced_acc <- mean(results$byClass[,11])
                 
                 if (metric == "logLoss") {
+                  
                   mlogloss <- ModelMetrics::mlogLoss(actual = df_test[[y]]
                                                      ,predicted = pred_prob)
                   df_results[[paste0("outer_", metric)]] <- round(mlogloss, 4)
+                  
+                } else if (grepl("Mean_F", metric)) {
+                  
+                  beta <- as.numeric(stringr::str_sub(metric, nchar(metric)))
+                  precision <- results$byClass[,5]
+                  recall <- results$byClass[,6]
+                  f <- (1 + (beta^2)) * ((precision * recall)/((beta^2) * precision + recall))
+                  df_results[[paste0("outer_", metric)]] <- round(mean(f, na.rm = TRUE), 4)
+                  
                 } 
                 
                 df_pred_class <- data.frame(fold = i
