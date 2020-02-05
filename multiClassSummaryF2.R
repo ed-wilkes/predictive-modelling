@@ -4,7 +4,7 @@
 #' @description Edited version of topepo's caret::multiClassSummary which computes the F2
 #' score in place of the F1 score for multi-class models
 #' 
-multiClassSummaryF4 <- function (data, lev = NULL, model = NULL) 
+multiClassSummaryF2 <- function (data, lev = NULL, model = NULL) 
 {
   if (!all(levels(data[, "pred"]) == levels(data[, "obs"]))) 
     stop("levels of observed and predicted data do not match")
