@@ -31,9 +31,10 @@
 #'           (v) Outer CV settings
 #'           (vi) Inner CV settings
 #'           (vii) Random seed setting
-#'           (viii) list of class predictions from each outer fold
-#'           (ix) list of class probabilites from each outer fold
-#'           (x) list of selected features (if feat_select == TRUE)
+#'           (viii) list of class predictions from each outer fold/repeat
+#'           (ix) list of class probabilites from each outer fold/repeat
+#'           (x) list of hyperparameters selected for each outer fold/repeat
+#'           (xi) list of selected features (if feat_select == TRUE)
 #'
 performNestedCVParallel <- function(data
                                     ,y
@@ -258,6 +259,7 @@ performNestedCVParallel <- function(data
                                           ,method = method
                                           ,metric = metric
                                           ,trControl = inner_control)
+              best_hyper <- inner_model$bestTune
               
               # Get predictions on test fold with final model from inner loop
               if (summary %in% c("twoClassSummary", "prSummary")) {
@@ -268,6 +270,7 @@ performNestedCVParallel <- function(data
                 results <-  caret::confusionMatrix(pred_class
                                                    ,reference = df_test[[y]]
                                                    ,mode = "everything")
+                best_hyper <- inner_model$bestTune
                 
                 df_results[[paste0("inner_", metric)]] <- 
                   round(caret::getTrainPerf(inner_model)[[paste0("Train", metric)]], 4) %>% 
@@ -347,13 +350,15 @@ performNestedCVParallel <- function(data
                 return(list(cv_results = df_results
                             ,prediction_class = df_pred_class
                             ,prediction_prob = df_pred_prob
+                            ,hyperparameters = best_hyper
                             ,selected_features = list_features))
                 
               } else {
                 
                 return(list(cv_results = df_results
                             ,prediction_class = df_pred_class
-                            ,prediction_prob = df_pred_prob))  
+                            ,prediction_prob = df_pred_prob
+                            ,hyperparameters = best_hyper))  
                 
               }
               
@@ -363,6 +368,7 @@ performNestedCVParallel <- function(data
   df_results_final <- dplyr::bind_rows(cross_validation[,1])
   df_pred_class_final <- dplyr::bind_rows(cross_validation[,2])
   df_pred_prob_final <- dplyr::bind_rows(cross_validation[,3])
+  df_hyperparameters <- dplyr::bind_rows(cross_validation[,4])
   mean_results <- apply(df_results_final[,2:dim(df_results_final)[2]]
                         ,2
                         ,function(x) mean(x, na.rm = TRUE))
@@ -377,7 +383,8 @@ performNestedCVParallel <- function(data
                 ,random_seed = seed
                 ,prediction_class = df_pred_class_final
                 ,prediction_prob = df_pred_prob_final
-                ,features = cross_validation[,4]
+                ,hyperparameters = df_hyperparameters
+                ,features = cross_validation[,5]
                 ,feat_select = feat_select)
     )
   } else {
@@ -389,7 +396,8 @@ performNestedCVParallel <- function(data
                 ,inner_CV = paste0(inner_k, " X ", inner_rep)
                 ,random_seed = seed
                 ,prediction_class = df_pred_class_final
-                ,prediction_prob = df_pred_prob_final)
+                ,prediction_prob = df_pred_prob_final
+                ,hyperparameters = df_hyperparameters)
     )
   }
   
