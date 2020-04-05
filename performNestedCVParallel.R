@@ -37,7 +37,7 @@
 #'           (xi) List of selected features (if feat_select == TRUE)
 #'
 #' To do:
-#'   - Implement used of features selected from separate cross-validated Boruta analysis
+#'   - Implement use of features selected from separate cross-validated Boruta analysis
 #'     to save run time
 #'   
 performNestedCVParallel <- function(data
