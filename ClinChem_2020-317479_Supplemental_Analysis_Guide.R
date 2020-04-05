@@ -93,9 +93,15 @@ df_model_all <- read.csv(file.choose(), header = TRUE) # multi-class data
   
 ## Boruta analysis of the data set ----
   
+  # To gaim an insight into the features that are most important for the class separation
+  # we must first define the borutaCVParallel function by running the "borutaCVParallel.R"
+  # script from:
+  # https://github.com/ed-wilkes/predictive-modelling/blob/master/borutaCVParallel.R
+  
   num_cores <- 10 # change this parameter depending on how many virtual cores your PC has
                   # NB: It is best to leave some cores free (e.g., 12 - 2 = 10)
-  set.seed(123) # again, this is important to reproducibility
+  set.seed(123) # again, this is critical to reproducibility. The value doesn't matter, it just
+                # needs to be the same each time you perform an analysis
   boruta_output <- borutaCVParallel(data = df_model_all[,-c(1, 30)] # remove ID and Class columns
                                     ,y = "Class"
                                     ,outer_k = 3
@@ -304,8 +310,8 @@ df_model_all <- read.csv(file.choose(), header = TRUE) # multi-class data
   
   # Plot binary analysis data
   plot_2a <- plotAUC(data = rf_model_binary$prediction_prob
-                     ,y_measure = "ppv"
-                     ,x_measure = "sens"
+                     ,y_measure = "ppv" # positive predictive value (precision)
+                     ,x_measure = "sens" # sensitivity (recall)
                      ,order = c("No.significant.abnormality.detected.", "X.Abnormal"))
   
   # Find the best class probability thresholds for each fold/repeat of the nested CV process
@@ -314,7 +320,7 @@ df_model_all <- read.csv(file.choose(), header = TRUE) # multi-class data
                                                          ,"X.Abnormal")
                                               ,measure_1 = "ppv"
                                               ,measure_2 = "sens"
-                                              ,optimise = "F4")
+                                              ,optimise = "F4") # optimise the threshold based on F4-score
   
   # Make hard classification calls for each fold/repeat based on the tuned threshold
   rf_model_binary_tuned <- predictBinaryClasses(predictions = rf_model_binary$prediction_prob
@@ -388,5 +394,4 @@ df_model_all <- read.csv(file.choose(), header = TRUE) # multi-class data
   
   # Calculate the mean PRAUC
   mean(ensemble_prauc)
-  
   
