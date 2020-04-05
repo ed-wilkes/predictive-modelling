@@ -32,7 +32,7 @@ predictBinaryClasses <- function(predictions, thresholds, target) {
     
     # Predict class based on probability threshold
     colnames(predictions[[rep]])[which(colnames(predictions[[rep]]) == "pred")] <- "pred_num"
-    predictions[[rep]]$pred <- factor(ifelse(predictions[[rep]]$pred >= threshold
+    predictions[[rep]]$pred <- factor(ifelse(predictions[[rep]]$pred_num >= threshold
                                              ,yes = pos_class
                                              ,no = neg_class)
                                       ,levels = levels(predictions[[rep]]$obs))
