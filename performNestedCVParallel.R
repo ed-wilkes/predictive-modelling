@@ -36,6 +36,10 @@
 #'           (x) Data frame hyperparameters selected for each outer fold/repeat
 #'           (xi) List of selected features (if feat_select == TRUE)
 #'
+#' To do:
+#'   - Implement used of features selected from separate cross-validated Boruta analysis
+#'     to save run time
+#'   
 performNestedCVParallel <- function(data
                                     ,y
                                     ,method
