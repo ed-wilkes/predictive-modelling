@@ -32,7 +32,6 @@ df_model_all <- read.csv(file.choose(), header = TRUE) # multi-class data
   # We must first create a copy of the data and encode the categorical variables (SEX, ASA, Allo, and Hcys) as integers
   df_model_encode <- df_model_all %>%
     select(-SID) %>%
-    remove_missing() %>%
     mutate(
       SEX = ifelse(SEX == "F", 0, ifelse(SEX == "M", 1, ifelse(SEX == "U", 2, NA)))
       ,ASA = ifelse(ASA == "N", 0, ifelse(ASA == "Y", 1, NA))
