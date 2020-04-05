@@ -31,10 +31,10 @@
 #'           (v) Outer CV settings
 #'           (vi) Inner CV settings
 #'           (vii) Random seed setting
-#'           (viii) list of class predictions from each outer fold/repeat
-#'           (ix) list of class probabilites from each outer fold/repeat
-#'           (x) list of hyperparameters selected for each outer fold/repeat
-#'           (xi) list of selected features (if feat_select == TRUE)
+#'           (viii) List of class predictions from each outer fold/repeat
+#'           (ix) List of class probabilites from each outer fold/repeat
+#'           (x) Data frame hyperparameters selected for each outer fold/repeat
+#'           (xi) List of selected features (if feat_select == TRUE)
 #'
 performNestedCVParallel <- function(data
                                     ,y
