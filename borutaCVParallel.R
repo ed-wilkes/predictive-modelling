@@ -33,6 +33,7 @@ borutaCVParallel <- function(data
   require(dplyr)
   require(caret)
   require(foreach)
+  require(reshape2)
   require(stringr)
   
   ## Check if "y" is in data ----
