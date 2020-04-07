@@ -100,7 +100,8 @@ borutaCVParallel <- function(data
               names(list_features) <- i
               df_importance <- model$ImpHistory %>%
                 as.data.frame() %>%
-                
+                reshape2::melt()
+
               return(list(selected_features = list_features
                           ,feature_importance = df_importance))
               
