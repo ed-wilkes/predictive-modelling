@@ -92,7 +92,7 @@ df_model_all <- read.csv(file.choose(), header = TRUE) # multi-class data
   
 ## Boruta analysis of the data set ----
   
-  # To gaim an insight into the features that are most important for the class separation
+  # To gain an insight into the features that are most important for the class separation
   # we must first define the borutaCVParallel function by running the "borutaCVParallel.R"
   # script from:
   # https://github.com/ed-wilkes/predictive-modelling/blob/master/borutaCVParallel.R
