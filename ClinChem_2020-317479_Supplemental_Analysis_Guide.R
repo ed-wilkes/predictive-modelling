@@ -1,4 +1,4 @@
-##############################################################################################
+###############################################################################################
 ## Supplementary material to:
 ## A machine learning approach for the auomated interpretation of plasma amino acid profiles
 ## Wilkes EH, Emmett E, Beltran L, Woodward GM, Carling RS
@@ -9,7 +9,7 @@
 ## For clarity, the script does not include the WSRF and XGB analyses; however, comments
 ## are provided for the function arguments that need to be changed in order to reproduce these.
 ## Note that the WSRF and XGB algorithms take longer to train than RF.
-##############################################################################################
+###############################################################################################
 
 ## Load required packages ----
 library(Boruta)
