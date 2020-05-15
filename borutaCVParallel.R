@@ -33,7 +33,6 @@ borutaCVParallel <- function(data
   require(dplyr)
   require(caret)
   require(foreach)
-  require(reshape2)
   require(stringr)
   
   ## Check if "y" is in data ----
@@ -43,8 +42,12 @@ borutaCVParallel <- function(data
   
   ## Check if "y" is a factor ----
   if (!is.factor(data[[y]])) {
-    message("Outcome variable is not a factor, coercing ...")
-    data[[y]] <- factor(data[[y]])
+    if (is.character(data[[y]])) {
+      message("Outcome variable is not a factor, coercing ...")
+      data[[y]] <- factor(data[[y]])
+    } else {
+      message("Non-character/factor outcome variable, assuming regression problem ...")
+    }
   }
   
   ## Check that folds/reps have been defined, default if not ----
@@ -101,8 +104,8 @@ borutaCVParallel <- function(data
               names(list_features) <- i
               df_importance <- model$ImpHistory %>%
                 as.data.frame() %>%
-                reshape2::melt()
-
+                reshape2::melt() 
+                
               return(list(selected_features = list_features
                           ,feature_importance = df_importance))
               
