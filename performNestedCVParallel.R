@@ -48,7 +48,7 @@ performNestedCVParallel <- function(data
                                     ,outer_rep
                                     ,inner_k
                                     ,inner_rep
-                                    ,sampling = "none"
+                                    ,sampling = NULL
                                     ,seed = 123
                                     ,verbose = FALSE
                                     ,feat_select = FALSE
@@ -63,6 +63,7 @@ performNestedCVParallel <- function(data
   require(dplyr)
   require(caret)
   require(foreach)
+  require(future)
   require(MLmetrics)
   require(pROC)
   require(stringr)
@@ -74,8 +75,12 @@ performNestedCVParallel <- function(data
   
   ## Check if "y" is a factor ----
   if (!is.factor(data[[y]])) {
-    message("Outcome variable is not a factor, coercing ...")
-    data[[y]] <- factor(data[[y]])
+    if (is.character(data[[y]])) {
+      message("Outcome variable is not a factor, coercing ...")
+      data[[y]] <- factor(data[[y]])
+    } else {
+      message("Non-character/factor outcome variable, assuming regression problem ...")
+    }
   }
   
   ## Check if "verbose" is boolean ----
@@ -84,42 +89,49 @@ performNestedCVParallel <- function(data
   }
   
   ## Check levels in outcome vector ----
-  if(length(levels(data[[y]])) > 2 && !grepl("Mean_F", metric)) {
-    
-    message("Outcome vector has more than one level, assuming multiclass analysis ...")
-    summary <- "multiClassSummary"
-    
-  } else if (length(levels(data[[y]])) > 2 && grepl("Mean_F", metric)) {
-    
-    message("Outcome vector has more than one level, assuming multiclass analysis ...")
-    beta <- stringr::str_sub(metric, nchar(metric))
-    if (as.numeric(beta) > 1) {
+  if (!is.null(levels(data[[y]]))) {
+
+    if (length(levels(data[[y]])) > 2 && !grepl("Mean_F", metric)) {
       
-      func_name <- paste0("multiClassSummaryF", beta)
-      if (!beta %in% c("2", "4")) {
-        stop(paste0("Only F1, F2, or F4 scores are currently supported."))
-      } else if (is.null(get(func_name))) {
-        stop(paste0("This metric requires the summaryFunction '"
-                    ,func_name
-                    ,"in your global environment."))
+      message("Outcome vector has more than one level, assuming multiclass analysis ...")
+      summary <- "multiClassSummary"
+      
+    } else if (length(levels(data[[y]])) > 2 && grepl("Mean_F", metric)) {
+      
+      message("Outcome vector has more than one level, assuming multiclass analysis ...")
+      beta <- stringr::str_sub(metric, nchar(metric))
+      if (as.numeric(beta) > 1) {
+        
+        func_name <- paste0("multiClassSummaryF", beta)
+        if (!beta %in% c("2", "4")) {
+          stop(paste0("Only F1, F2, or F4 scores are currently supported."))
+        } else if (is.null(get(func_name))) {
+          stop(paste0("This metric requires the summaryFunction '"
+                      ,func_name
+                      ,"in your global environment."))
+        } else {
+          summary <- func_name
+        }
+        
       } else {
-        summary <- func_name
+        summary <- "multiClassSummary"
       }
       
-    } else {
-      summary <- "multiClassSummary"
+    } else if (length(levels(data[[y]])) == 2 && metric != "AUC") {
+      
+      message("Outcome vector has two levels, assuming two class analysis ...")
+      summary <- "twoClassSummary"
+      
+    } else if (length(levels(data[[y]])) == 2 && metric == "AUC") {
+      
+      message("Outcome vector has two levels, assuming two class analysis ...")
+      summary <- "prSummary"
+      
     }
     
-  } else if (length(levels(data[[y]])) == 2 && metric != "AUC") {
-    
-    message("Outcome vector has two levels, assuming two class analysis ...")
-    summary <- "twoClassSummary"
-    
-  } else if (length(levels(data[[y]])) == 2 && metric == "AUC") {
-    
-    message("Outcome vector has two levels, assuming two class analysis ...")
-    summary <- "prSummary"
-    
+  } else {
+    message("Non-character/factor outcome variable, using default regression summary ...")
+    summary <- NULL
   }
   
   ## Check that folds/reps have been defined, default if not ----
@@ -146,8 +158,10 @@ performNestedCVParallel <- function(data
   }
   
   ## Check if sampling is correct string ----
-  if (!sampling %in% c("none", "down", "smote", "rose", "custom")) {
-    stop("'sampling' must be a string of value 'none', 'down', 'smote', 'rose', or 'custom'.")
+  if(!is.null(sampling)) {
+    if (!sampling %in% c("none", "down", "smote", "rose", "custom")) {
+      stop("'sampling' must be a string of value 'none', 'down', 'smote', 'rose', or 'custom'.")
+    }
   }
   
   ## Check if target_class has been defined ----
@@ -157,44 +171,57 @@ performNestedCVParallel <- function(data
   }
 
   ## Define inner CV control ----
-  if (sampling == "none") {
+  if (is.factor(data[[y]])) {
     
-    inner_control <- caret::trainControl(method = "repeatedcv"
-                                         ,number = inner_k
-                                         ,repeats = inner_rep
-                                         ,verboseIter = verbose
-                                         ,classProbs = TRUE
-                                         ,allowParallel = FALSE
-                                         ,trim = TRUE
-                                         ,summaryFunction = get(summary))
-    
-  } else if (sampling %in% c("down", "smote", "rose")) {
-    
-    inner_control <- caret::trainControl(method = "repeatedcv"
-                                         ,number = inner_k
-                                         ,repeats = inner_rep
-                                         ,verboseIter = verbose
-                                         ,classProbs = TRUE
-                                         ,sampling = sampling
-                                         ,allowParallel = FALSE
-                                         ,trim = TRUE
-                                         ,summaryFunction = get(summary))
-    
-  } else if (sampling == "custom") {
-    
-    if (is.null(get(sampling))) {
-      stop("This sampling scheme requires a caret sampling method called 'custom' in your global environment.")
-    } else {
+    if (sampling == "none") {
+      
       inner_control <- caret::trainControl(method = "repeatedcv"
                                            ,number = inner_k
                                            ,repeats = inner_rep
                                            ,verboseIter = verbose
                                            ,classProbs = TRUE
-                                           ,sampling = get(sampling)
                                            ,allowParallel = FALSE
                                            ,trim = TRUE
                                            ,summaryFunction = get(summary))
+      
+    } else if (sampling %in% c("down", "smote", "rose")) {
+      
+      inner_control <- caret::trainControl(method = "repeatedcv"
+                                           ,number = inner_k
+                                           ,repeats = inner_rep
+                                           ,verboseIter = verbose
+                                           ,classProbs = TRUE
+                                           ,sampling = sampling
+                                           ,allowParallel = FALSE
+                                           ,trim = TRUE
+                                           ,summaryFunction = get(summary))
+      
+    } else if (sampling == "custom") {
+      
+      if (is.null(get(sampling))) {
+        stop("This sampling scheme requires a caret sampling method called 'custom' in your global environment.")
+      } else {
+        inner_control <- caret::trainControl(method = "repeatedcv"
+                                             ,number = inner_k
+                                             ,repeats = inner_rep
+                                             ,verboseIter = verbose
+                                             ,classProbs = TRUE
+                                             ,sampling = get(sampling)
+                                             ,allowParallel = FALSE
+                                             ,trim = TRUE
+                                             ,summaryFunction = get(summary))
+      }
+      
     }
+    
+  } else {
+    
+    inner_control <- caret::trainControl(method = "repeatedcv"
+                                         ,number = inner_k
+                                         ,repeats = inner_rep
+                                         ,verboseIter = verbose
+                                         ,allowParallel = FALSE
+                                         ,trim = TRUE)
     
   }
   
@@ -209,15 +236,18 @@ performNestedCVParallel <- function(data
   } else {
     message(paste0("Running on ", n_cores, " cores ..."))
   }
-  cluster <- makeCluster(n_cores)
-  registerDoParallel(cluster)
+  cl <- future::makeClusterPSOCK(n_cores, autoStop = TRUE)
+  registerDoParallel(cl)
+  
+  ## Export .txt file of cluster output for debugging ----
+  clusterEvalQ(cl, sink(paste0("C:/cluster/", Sys.getpid(), ".txt")))
   
   ## Export necessary functions to cluster ----
-  if (sampling == "custom") {
-    clusterExport(cluster, varlist = "custom", envir = .GlobalEnv)
+  if (!is.null(sampling) && sampling == "custom") {
+    clusterExport(cl, varlist = "custom", envir = .GlobalEnv)
   }
-  if (grepl("multiClassSummaryF", summary)) {
-    clusterExport(cluster, varlist = summary, envir = .GlobalEnv)
+  if (!is.null(sampling) && grepl("multiClassSummaryF", summary)) {
+    clusterExport(cl, varlist = summary, envir = .GlobalEnv)
   }
   
   ## Outer CV repeat loop ----
@@ -239,7 +269,7 @@ performNestedCVParallel <- function(data
               test_rows <- as.numeric(row.names(df_test))
               
               # Select features if required
-              if(feat_select == TRUE) {
+              if (feat_select == TRUE) {
                 
                 model <- Boruta::Boruta(as.formula(paste(paste(y),"~ ."))
                                         ,df_train
@@ -266,91 +296,114 @@ performNestedCVParallel <- function(data
               best_hyper <- inner_model$bestTune
               
               # Get predictions on test fold with final model from inner loop
-              if (summary %in% c("twoClassSummary", "prSummary")) {
+              if (!is.null(summary)) {
                 
-                pred_prob <- predict(inner_model, df_test, type = "prob")
-                roc <- pROC::roc(df_test[[y]], pred_prob[[target_class]])$auc
-                pred_class <- predict(inner_model, df_test)
-                results <-  caret::confusionMatrix(pred_class
-                                                   ,reference = df_test[[y]]
-                                                   ,mode = "everything")
-                best_hyper <- inner_model$bestTune
-                
-                df_results[[paste0("inner_", metric)]] <- 
-                  round(caret::getTrainPerf(inner_model)[[paste0("Train", metric)]], 4) %>% 
-                  as.numeric
-                df_results$outer_mean_sens <- results$byClass[1]
-                df_results$outer_mean_spec <- results$byClass[2]
-                df_results$outer_mean_ppv <- results$byClass[3]
-                df_results$outer_mean_npv <- results$byClass[4]
-                df_results$outer_mean_auroc <- roc
-                
-                if (metric == "AUC") {
-                  prauc <- MLmetrics::PRAUC(y_pred = pred_prob[[target_class]]
-                                            ,y_true = df_test[[y]])
-                  df_results[[paste0("outer_pr", metric)]] <- round(prauc, 4)
-                }
-                
-                df_pred_class <- data.frame(fold = i
-                                            ,row_num = test_rows
-                                            ,pred = pred_class
-                                            ,obs = df_test[[y]])
-                
-                df_pred_prob <- data.frame(fold = i
-                                           ,row_num = test_rows
-                                           ,pred = pred_prob[[target_class]]
-                                           ,obs = df_test[[y]])
-                
-              } else if (summary %in% c("multiClassSummary"
-                                        ,"multiClassSummaryF2"
-                                        ,"multiClassSummaryF4")) {
-                
-                pred_class <- predict(inner_model, df_test)
-                pred_prob <- predict(inner_model, df_test, type = "prob")
-                results <- caret::confusionMatrix(pred_class
-                                                  ,reference = df_test[[y]]
-                                                  ,mode = "everything")
-                
-                df_results[[paste0("inner_", metric)]] <- 
-                  round(caret::getTrainPerf(inner_model)[[paste0("Train", metric)]], 4) %>% 
-                  as.numeric
-                df_results$outer_mean_sens <- mean(results$byClass[,1])
-                df_results$outer_mean_spec <- mean(results$byClass[,2])
-                df_results$outer_mean_ppv <- mean(results$byClass[,3], na.rm = TRUE)
-                df_results$outer_mean_npv <- mean(results$byClass[,4])
-                df_results$outer_mean_f1 <- mean(results$byClass[,7], na.rm = TRUE)
-                df_results$outer_mean_balanced_acc <- mean(results$byClass[,11])
-                
-                if (metric == "logLoss") {
+                if (summary %in% c("twoClassSummary", "prSummary")) {
                   
-                  mlogloss <- ModelMetrics::mlogLoss(actual = df_test[[y]]
-                                                     ,predicted = pred_prob)
-                  df_results[[paste0("outer_", metric)]] <- round(mlogloss, 4)
+                  pred_prob <- predict(inner_model, df_test, type = "prob")
+                  roc <- pROC::roc(df_test[[y]], pred_prob[[target_class]])$auc
+                  pred_class <- predict(inner_model, df_test)
+                  results <-  caret::confusionMatrix(pred_class
+                                                     ,reference = df_test[[y]]
+                                                     ,mode = "everything")
+                  best_hyper <- inner_model$bestTune
                   
-                } else if (grepl("Mean_F", metric)) {
+                  df_results[[paste0("inner_", metric)]] <- 
+                    round(caret::getTrainPerf(inner_model)[[paste0("Train", metric)]], 4) %>% 
+                    as.numeric
+                  df_results$outer_mean_sens <- results$byClass[1]
+                  df_results$outer_mean_spec <- results$byClass[2]
+                  df_results$outer_mean_ppv <- results$byClass[3]
+                  df_results$outer_mean_npv <- results$byClass[4]
+                  df_results$outer_mean_auroc <- roc
                   
-                  beta <- as.numeric(stringr::str_sub(metric, nchar(metric)))
-                  precision <- results$byClass[,5]
-                  recall <- results$byClass[,6]
-                  f <- (1 + (beta^2)) * ((precision * recall)/((beta^2) * precision + recall))
-                  df_results[[paste0("outer_", metric)]] <- round(mean(f, na.rm = TRUE), 4)
+                  if (metric == "AUC") {
+                    prauc <- MLmetrics::PRAUC(y_pred = pred_prob[[target_class]]
+                                              ,y_true = df_test[[y]])
+                    df_results[[paste0("outer_pr", metric)]] <- round(prauc, 4)
+                  }
                   
-                } 
-                
-                df_pred_class <- data.frame(fold = i
+                  df_pred_class <- data.frame(fold = i
+                                              ,row_num = test_rows
+                                              ,pred = pred_class
+                                              ,obs = df_test[[y]])
+                  
+                  df_pred_prob <- data.frame(fold = i
+                                             ,row_num = test_rows
+                                             ,pred = pred_prob[[target_class]]
+                                             ,obs = df_test[[y]])
+                  
+                } else if (summary %in% c("multiClassSummary"
+                                          ,"multiClassSummaryF2"
+                                          ,"multiClassSummaryF4")) {
+                  
+                  pred_class <- predict(inner_model, df_test)
+                  pred_prob <- predict(inner_model, df_test, type = "prob")
+                  results <- caret::confusionMatrix(pred_class
+                                                    ,reference = df_test[[y]]
+                                                    ,mode = "everything")
+                  
+                  df_results[[paste0("inner_", metric)]] <- 
+                    round(caret::getTrainPerf(inner_model)[[paste0("Train", metric)]], 4) %>% 
+                    as.numeric
+                  df_results$outer_mean_sens <- mean(results$byClass[,1])
+                  df_results$outer_mean_spec <- mean(results$byClass[,2])
+                  df_results$outer_mean_ppv <- mean(results$byClass[,3], na.rm = TRUE)
+                  df_results$outer_mean_npv <- mean(results$byClass[,4])
+                  df_results$outer_mean_f1 <- mean(results$byClass[,7], na.rm = TRUE)
+                  df_results$outer_mean_balanced_acc <- mean(results$byClass[,11])
+                  
+                  if (metric == "logLoss") {
+                    
+                    mlogloss <- ModelMetrics::mlogLoss(actual = df_test[[y]]
+                                                       ,predicted = pred_prob)
+                    df_results[[paste0("outer_", metric)]] <- round(mlogloss, 4)
+                    
+                  } else if (grepl("Mean_F", metric)) {
+                    
+                    beta <- as.numeric(stringr::str_sub(metric, nchar(metric)))
+                    precision <- results$byClass[,5]
+                    recall <- results$byClass[,6]
+                    f <- (1 + (beta^2)) * ((precision * recall)/((beta^2) * precision + recall))
+                    df_results[[paste0("outer_", metric)]] <- round(mean(f, na.rm = TRUE), 4)
+                    
+                  } 
+                  
+                  df_pred_class <- data.frame(fold = i
+                                              ,row_num = test_rows
+                                              ,obs = df_test[[y]]
+                                              ,pred = pred_class)
+                  
+                  df_pred_prob <- data.frame(fold = i
                                             ,row_num = test_rows
                                             ,obs = df_test[[y]]
-                                            ,pred = pred_class)
+                                            ,pred_prob)
+                  
+                }
                 
+              } else {
+                
+                predictions <- predict(inner_model, df_test)
+                results <- caret::postResample(pred = predictions, obs = df_test[[y]])
+                
+                df_results[[paste0("inner_", metric)]] <- 
+                  round(caret::getTrainPerf(inner_model)[[paste0("Train", metric)]], 4) %>% 
+                  as.numeric
+                df_results$outer_RMSE <- results[["RMSE"]]
+                df_results$outer_R2 <- results[["Rsquared"]]
+                df_results$outer_MAE <- results[["MAE"]]
+                
+                df_pred_class <- NULL
                 df_pred_prob <- data.frame(fold = i
-                                          ,row_num = test_rows
-                                          ,obs = df_test[[y]]
-                                          ,pred_prob)
+                                           ,row_num = test_rows
+                                           ,obs = df_test[[y]]
+                                           ,predictions)
                 
               }
               
               if (feat_select == TRUE) {
                 
+                print(paste0(timestamp(), " returning results for ", i))
                 return(list(cv_results = df_results
                             ,prediction_class = df_pred_class
                             ,prediction_prob = df_pred_prob
@@ -359,6 +412,7 @@ performNestedCVParallel <- function(data
                 
               } else {
                 
+                print(paste0(timestamp(), " returning results for ", i))
                 return(list(cv_results = df_results
                             ,prediction_class = df_pred_class
                             ,prediction_prob = df_pred_prob
@@ -405,6 +459,8 @@ performNestedCVParallel <- function(data
     )
   }
   
-  stopCluster(cluster)
+  #on.exit(stopCluster(cl))
+  rm(cl)
+  gc()
   
 }
